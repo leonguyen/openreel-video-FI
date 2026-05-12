@@ -1,11 +1,6 @@
-# render.yaml – deploy OpenReel Video on Render
-
 services:
   - type: web
     name: openreel-video
     runtime: static-site
-    buildCommand: npm install && npm run build
+    buildCommand: pnpm install && pnpm build
     publishPath: dist
-    envVars:
-      - key: NODE_ENV
-        value: production
