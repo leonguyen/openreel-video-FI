@@ -27,7 +27,10 @@ import type {
 } from "./types";
 import { getSpeedEngine } from "./speed-engine";
 import { getFrameInterpolationEngine } from "./frame-interpolation";
-import { getStabilizationEngine } from "./stabilization";
+import {
+  getStabilizedTransform,
+  getVidstabEngine,
+} from "./stabilization";
 import {
   ParallelFrameDecoder,
   getParallelFrameDecoder,
@@ -642,19 +645,37 @@ export class VideoEngine {
             }
 
             if (!bitmap) {
+              const vidstabForDecode = getVidstabEngine();
+              const useStabilizedBlob = vidstabForDecode.hasStabilized(clip.id);
+              const decodeBlob = useStabilizedBlob
+                ? vidstabForDecode.getStabilizedBlob(clip.id)!
+                : mediaItem.blob;
+              const decodeTime = useStabilizedBlob
+                ? clipInfo.sourceTime - clip.inPoint
+                : clipInfo.sourceTime;
+
               bitmap = await this.decodeFrameWithMediaBunny(
-                mediaItem.blob,
-                clipInfo.sourceTime,
+                decodeBlob,
+                decodeTime,
                 settings.width,
                 settings.height,
-                clipInfo.mediaId,
+                useStabilizedBlob ? `stabilized:${clip.id}` : clipInfo.mediaId,
               );
             }
             if (!bitmap) {
+              const vidstabForDecode = getVidstabEngine();
+              const useStabilizedBlob = vidstabForDecode.hasStabilized(clip.id);
+              const decodeBlob = useStabilizedBlob
+                ? vidstabForDecode.getStabilizedBlob(clip.id)!
+                : mediaItem.blob;
+              const decodeTime = useStabilizedBlob
+                ? clipInfo.sourceTime - clip.inPoint
+                : clipInfo.sourceTime;
+
               bitmap = await this.decodeFrameWithVideoElement(
-                mediaItem.id,
-                mediaItem.blob,
-                clipInfo.sourceTime,
+                useStabilizedBlob ? `stabilized:${clip.id}` : mediaItem.id,
+                decodeBlob,
+                decodeTime,
                 settings.width,
                 settings.height,
               );
@@ -765,28 +786,20 @@ export class VideoEngine {
               }
             }
 
-            let drawTransform = scaledTransform;
-            if (clip.stabilization?.enabled && clip.stabilization.analyzed) {
-              const stabEngine = getStabilizationEngine();
-              const correction = stabEngine.getCorrectionTransform(
-                clip.id,
-                clipInfo.sourceTime,
-              );
-              if (correction) {
-                drawTransform = {
-                  ...scaledTransform,
-                  position: {
-                    x: scaledTransform.position.x + correction.dx,
-                    y: scaledTransform.position.y + correction.dy,
+            const vidstabEng = getVidstabEngine();
+            const drawTransform = vidstabEng.hasStabilized(clip.id)
+              ? scaledTransform
+              : getStabilizedTransform(
+                  clip,
+                  scaledTransform,
+                  clipInfo.sourceTime,
+                  {
+                    canvasWidth: width,
+                    canvasHeight: height,
+                    sourceWidth: processedBitmap.width,
+                    sourceHeight: processedBitmap.height,
                   },
-                  rotation: scaledTransform.rotation + (correction.rotation * 180) / Math.PI,
-                  scale: {
-                    x: scaledTransform.scale.x * correction.scale,
-                    y: scaledTransform.scale.y * correction.scale,
-                  },
-                };
-              }
-            }
+                );
 
             this.drawFrameToContext(
               ctx,
